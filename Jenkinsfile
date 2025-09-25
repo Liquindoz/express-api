@@ -3,7 +3,6 @@ pipeline {
   options { timestamps() }
 
   tools { nodejs 'Node 20' }                  // Manage Jenkins → Global Tool Configuration
-
   environment {
     SCANNER_HOME = tool 'SonarScanner'        // Manage Jenkins → Global Tool Configuration
     HOST_PORT = '8082'                         // external host port
@@ -83,6 +82,7 @@ pipeline {
           sh """#!/bin/bash
             set -euo pipefail
 
+            # Clean previous container
             docker rm -f express-api-test || true
 
             echo "[Deploy] Building image ${IMAGE}"
@@ -97,15 +97,14 @@ pipeline {
             echo "[Deploy] docker ps:"
             docker ps --format 'table {{.Names}}\\t{{.Image}}\\t{{.Ports}}\\t{{.Status}}'
 
-            echo "[Deploy] Waiting for health endpoint..."
-            HEALTH1="http://localhost:${HOST_PORT}/health"
-            HEALTH2="http://localhost:${HOST_PORT}/api/health"
-            HEALTH3="http://localhost:${HOST_PORT}/"
-
+            echo "[Deploy] Waiting for health (probing inside container netns)…"
             for i in {1..60}; do
-              if curl -fsS "\$HEALTH1" >/dev/null 2>&1 || \\
-                 curl -fsS "\$HEALTH2" >/dev/null 2>&1 || \\
-                 curl -fsS "\$HEALTH3" >/dev/null 2>&1; then
+              if docker run --rm --network container:express-api-test curlimages/curl:8.10.1 \\
+                   -fsS http://localhost:${APP_PORT}/health >/dev/null 2>&1 || \\
+                 docker run --rm --network container:express-api-test curlimages/curl:8.10.1 \\
+                   -fsS http://localhost:${APP_PORT}/api/health >/dev/null 2>&1 || \\
+                 docker run --rm --network container:express-api-test curlimages/curl:8.10.1 \\
+                   -fsS http://localhost:${APP_PORT}/ >/dev/null 2>&1; then
                 echo "[Deploy] Healthy "
                 docker logs --tail=80 express-api-test || true
                 exit 0
@@ -114,7 +113,7 @@ pipeline {
               sleep 1
             done
 
-            echo "[Deploy] Health check failed  — showing logs"
+            echo "[Deploy] Health check failed — showing logs"
             docker logs --tail=300 express-api-test || true
             exit 1
           """
