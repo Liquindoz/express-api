@@ -2,12 +2,12 @@ pipeline {
   agent any
   options { timestamps() }
 
-  tools { nodejs 'Node 20' }
+  tools { nodejs 'Node 20' }                  // Manage Jenkins → Global Tool Configuration
 
   environment {
-    SCANNER_HOME = tool 'SonarScanner'
-    HOST_PORT = '8082'
-    APP_PORT  = '3000'
+    SCANNER_HOME = tool 'SonarScanner'        // Manage Jenkins → Global Tool Configuration
+    HOST_PORT = '8082'                         // external
+    APP_PORT  = '3000'                         // internal app port
   }
 
   stages {
@@ -19,14 +19,18 @@ pipeline {
 
     stage('Build') {
       steps {
-        sh 'node -v && npm -v'
-        sh 'if [ -f package-lock.json ]; then npm ci; else npm install; fi'
+        sh '''#!/bin/bash
+          set -euo pipefail
+          node -v && npm -v
+          if [ -f package-lock.json ]; then npm ci; else npm install; fi
+        '''
       }
     }
 
     stage('Test') {
       steps {
-        sh '''
+        sh '''#!/bin/bash
+          set -euo pipefail
           export NODE_OPTIONS=--experimental-vm-modules
           npx jest --runInBand
         '''
@@ -35,13 +39,15 @@ pipeline {
 
     stage('Code Quality') {
       steps {
-        sh '''
+        sh '''#!/bin/bash
+          set -euo pipefail
           export NODE_OPTIONS=--experimental-vm-modules
           npx jest --coverage --coverageReporters=lcov --coverageReporters=text
         '''
         withSonarQubeEnv('sonarqube') {
-          sh """
-            ${SCANNER_HOME}/bin/sonar-scanner \
+          sh """#!/bin/bash
+            set -euo pipefail
+            "\${SCANNER_HOME}/bin/sonar-scanner" \
               -Dsonar.projectKey=express-api \
               -Dsonar.projectName=express-api \
               -Dsonar.sources=src \
@@ -54,9 +60,10 @@ pipeline {
 
     stage('Security') {
       steps {
-        sh '''
-          set -e
+        sh '''#!/bin/bash
+          set -euo pipefail
           npm audit --audit-level=high --json > audit.json || true
+
           if grep -q '"severity":"\\(high\\|critical\\)"' audit.json; then
             echo "High/Critical vulnerabilities found."
             head -n 200 audit.json
@@ -73,9 +80,10 @@ pipeline {
       steps {
         script {
           def IMAGE = "express-api:${env.BUILD_NUMBER}"
-          sh """
+          sh """#!/bin/bash
             set -euo pipefail
 
+            # Stop any previous test container
             docker rm -f express-api-test || true
 
             echo "[Deploy] Building image ${IMAGE}"
@@ -108,11 +116,11 @@ pipeline {
         }
       }
     }
-  }  // <— closes stages
+  }
 
   post {
     always {
       archiveArtifacts artifacts: 'coverage/lcov.info', allowEmptyArchive: true, fingerprint: true
     }
-  }  // <— closes post
-}    // <— closes pipeline
+  }
+}
