@@ -2,19 +2,15 @@ pipeline {
   agent any
   options { timestamps() }
 
-  tools {
-    nodejs 'Node 20'                  // Manage Jenkins → Global Tool Configuration
-  }
+  tools { nodejs 'Node 20' }
 
   environment {
-    SCANNER_HOME = tool 'SonarScanner' // Manage Jenkins → Global Tool Configuration
-    // change HOST_PORT if 3000 is busy on your host; APP_PORT must match your app's internal port
-    HOST_PORT   = '8082'
-    APP_PORT    = '3000'
+    SCANNER_HOME = tool 'SonarScanner'
+    HOST_PORT = '8082'
+    APP_PORT  = '3000'
   }
 
   stages {
-
     stage('Checkout SCM') {
       steps {
         git branch: 'main', url: 'https://github.com/Liquindoz/express-api.git'
@@ -39,13 +35,10 @@ pipeline {
 
     stage('Code Quality') {
       steps {
-        // Generate coverage for SonarQube
         sh '''
           export NODE_OPTIONS=--experimental-vm-modules
           npx jest --coverage --coverageReporters=lcov --coverageReporters=text
         '''
-
-        // 'sonarqube' must match the name under Manage Jenkins → System → SonarQube servers
         withSonarQubeEnv('sonarqube') {
           sh """
             ${SCANNER_HOME}/bin/sonar-scanner \
@@ -64,7 +57,6 @@ pipeline {
         sh '''
           set -e
           npm audit --audit-level=high --json > audit.json || true
-
           if grep -q '"severity":"\\(high\\|critical\\)"' audit.json; then
             echo "High/Critical vulnerabilities found."
             head -n 200 audit.json
@@ -78,50 +70,49 @@ pipeline {
     }
 
     stage('Deploy') {
-  steps {
-    script {
-      def IMAGE = "express-api:${env.BUILD_NUMBER}"
-      // If 8082 is your host port, keep it; APP_PORT is the container's port
-      def HEALTH_HOST = 'host.docker.internal'
+      steps {
+        script {
+          def IMAGE = "express-api:${env.BUILD_NUMBER}"
+          sh """
+            set -euo pipefail
 
-      sh """
-        set -e
-        docker rm -f express-api-test || true
+            docker rm -f express-api-test || true
 
-        echo "[Deploy] Building image ${IMAGE}"
-        docker build --pull -t ${IMAGE} .
+            echo "[Deploy] Building image ${IMAGE}"
+            docker build --pull -t ${IMAGE} .
 
-        echo "[Deploy] Running container host:${HOST_PORT} -> app:${APP_PORT}"
-        docker run -d --name express-api-test -p ${HOST_PORT}:${APP_PORT} \\
-          -e PORT=${APP_PORT} \\
-          ${IMAGE}
+            echo "[Deploy] Running container on host:${HOST_PORT} -> app:${APP_PORT}"
+            docker run -d --name express-api-test -p ${HOST_PORT}:${APP_PORT} \\
+              -e NODE_ENV=production \\
+              -e PORT=${APP_PORT} \\
+              ${IMAGE}
 
-        echo "[Deploy] docker ps:"
-        docker ps --format 'table {{.Names}}\\t{{.Image}}\\t{{.Ports}}\\t{{.Status}}'
+            echo "[Deploy] docker ps:"
+            docker ps --format 'table {{.Names}}\\t{{.Image}}\\t{{.Ports}}\\t{{.Status}}'
 
-        echo "[Deploy] Waiting for health endpoint at http://${HEALTH_HOST}:${HOST_PORT}/health ..."
-        i=0
-        until curl -fsS http://${HEALTH_HOST}:${HOST_PORT}/health >/dev/null 2>&1; do
-          i=\$((i+1))
-          if [ \$i -gt 60 ]; then
-            echo "Health check failed after 60s. Showing container logs and status:"
-            docker logs express-api-test || true
-            docker inspect express-api-test --format 'Status={{.State.Status}} ExitCode={{.State.ExitCode}}' || true
-            exit 1
-          fi
-          sleep 1
-        done
+            echo "[Deploy] Waiting for health endpoint..."
+            i=0
+            until curl -fsS http://localhost:${HOST_PORT}/health >/dev/null 2>&1; do
+              i=\$((i+1))
+              if [ \$i -gt 60 ]; then
+                echo "Health check failed after 60s. Showing container logs:"
+                docker logs --tail=300 express-api-test || true
+                exit 1
+              fi
+              sleep 1
+            done
 
-        echo "[Deploy] Health check OK"
-      """
+            echo "[Deploy] Health check OK"
+            docker logs --tail=100 express-api-test || true
+          """
+        }
+      }
     }
-  }
-}
+  }  // <— closes stages
 
   post {
     always {
-      // keep coverage if present
       archiveArtifacts artifacts: 'coverage/lcov.info', allowEmptyArchive: true, fingerprint: true
     }
-  }
-}
+  }  // <— closes post
+}    // <— closes pipeline
