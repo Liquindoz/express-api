@@ -78,45 +78,45 @@ pipeline {
     }
 
     stage('Deploy') {
-      steps {
-        script {
-          def IMAGE = "express-api:${env.BUILD_NUMBER}"
+  steps {
+    script {
+      def IMAGE = "express-api:${env.BUILD_NUMBER}"
+      // If 8082 is your host port, keep it; APP_PORT is the container's port
+      def HEALTH_HOST = 'host.docker.internal'
 
-          sh """
-            set -e
+      sh """
+        set -e
+        docker rm -f express-api-test || true
 
-            # stop any previous test container
-            docker rm -f express-api-test || true
+        echo "[Deploy] Building image ${IMAGE}"
+        docker build --pull -t ${IMAGE} .
 
-            echo "[Deploy] Building image ${IMAGE}"
-            docker build --pull -t ${IMAGE} .
+        echo "[Deploy] Running container host:${HOST_PORT} -> app:${APP_PORT}"
+        docker run -d --name express-api-test -p ${HOST_PORT}:${APP_PORT} \\
+          -e PORT=${APP_PORT} \\
+          ${IMAGE}
 
-            echo "[Deploy] Running container on host:${HOST_PORT} -> app:${APP_PORT}"
-            docker run -d --name express-api-test -p ${HOST_PORT}:${APP_PORT} \\
-              -e PORT=${APP_PORT} \\
-              ${IMAGE}
+        echo "[Deploy] docker ps:"
+        docker ps --format 'table {{.Names}}\\t{{.Image}}\\t{{.Ports}}\\t{{.Status}}'
 
-            echo "[Deploy] docker ps:"
-            docker ps --format 'table {{.Names}}\\t{{.Image}}\\t{{.Ports}}\\t{{.Status}}'
+        echo "[Deploy] Waiting for health endpoint at http://${HEALTH_HOST}:${HOST_PORT}/health ..."
+        i=0
+        until curl -fsS http://${HEALTH_HOST}:${HOST_PORT}/health >/dev/null 2>&1; do
+          i=\$((i+1))
+          if [ \$i -gt 60 ]; then
+            echo "Health check failed after 60s. Showing container logs and status:"
+            docker logs express-api-test || true
+            docker inspect express-api-test --format 'Status={{.State.Status}} ExitCode={{.State.ExitCode}}' || true
+            exit 1
+          fi
+          sleep 1
+        done
 
-            echo "[Deploy] Waiting for health endpoint..."
-            i=0
-            until curl -fsS http://localhost:${HOST_PORT}/health >/dev/null 2>&1; do
-              i=\$((i+1))
-              if [ \$i -gt 60 ]; then
-                echo "Health check failed after 60s. Showing container logs:"
-                docker logs express-api-test || true
-                exit 1
-              fi
-              sleep 1
-            done
-
-            echo "[Deploy] Health check OK"
-          """
-        }
-      }
+        echo "[Deploy] Health check OK"
+      """
     }
   }
+}
 
   post {
     always {
