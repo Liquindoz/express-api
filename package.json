@@ -1,19 +1,24 @@
 {
   "name": "express-api",
   "version": "1.0.0",
+  "description": "Express.js API for CI/CD assignment",
   "type": "module",
-  "private": true,
   "scripts": {
-    "security:ci": "npm audit --audit-level=high --json"
     "start": "node src/index.js",
-    "test": "cross-env NODE_OPTIONS=--experimental-vm-modules jest --runInBand"
+    "dev": "nodemon src/index.js",
+    "test": "cross-env NODE_OPTIONS=--experimental-vm-modules jest --runInBand",
+    "test:ci": "NODE_OPTIONS=--experimental-vm-modules jest --runInBand",
+    "lint": "eslint .",
+    "security:ci": "npm audit --audit-level=high --json"
   },
   "dependencies": {
-    "express": "^4.19.2",
-    "supertest": "^7.0.0"
+    "express": "^4.19.2"
   },
   "devDependencies": {
     "cross-env": "^7.0.3",
-    "jest": "^29.7.0"
+    "eslint": "^9.9.0",
+    "jest": "^29.7.0",
+    "nodemon": "^3.1.0",
+    "supertest": "^6.3.3"
   }
 }
