@@ -4,6 +4,7 @@
   "type": "module",
   "private": true,
   "scripts": {
+    "security:ci": "npm audit --audit-level=high --json"
     "start": "node src/index.js",
     "test": "cross-env NODE_OPTIONS=--experimental-vm-modules jest --runInBand"
   },
