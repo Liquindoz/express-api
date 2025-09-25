@@ -9,7 +9,7 @@ pipeline {
   environment {
     SCANNER_HOME = tool 'SonarScanner' // Manage Jenkins → Global Tool Configuration
     // change HOST_PORT if 3000 is busy on your host; APP_PORT must match your app's internal port
-    HOST_PORT   = '3000'
+    HOST_PORT   = '8082'
     APP_PORT    = '3000'
   }
 
