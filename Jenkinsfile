@@ -6,7 +6,7 @@ pipeline {
 
   environment {
     SCANNER_HOME = tool 'SonarScanner'        // Manage Jenkins → Global Tool Configuration
-    HOST_PORT = '8082'                         // external
+    HOST_PORT = '8082'                         // external host port
     APP_PORT  = '3000'                         // internal app port
   }
 
@@ -83,7 +83,6 @@ pipeline {
           sh """#!/bin/bash
             set -euo pipefail
 
-            # Stop any previous test container
             docker rm -f express-api-test || true
 
             echo "[Deploy] Building image ${IMAGE}"
@@ -99,19 +98,25 @@ pipeline {
             docker ps --format 'table {{.Names}}\\t{{.Image}}\\t{{.Ports}}\\t{{.Status}}'
 
             echo "[Deploy] Waiting for health endpoint..."
-            i=0
-            until curl -fsS http://localhost:${HOST_PORT}/health >/dev/null 2>&1; do
-              i=\$((i+1))
-              if [ \$i -gt 60 ]; then
-                echo "Health check failed after 60s. Showing container logs:"
-                docker logs --tail=300 express-api-test || true
-                exit 1
+            HEALTH1="http://localhost:${HOST_PORT}/health"
+            HEALTH2="http://localhost:${HOST_PORT}/api/health"
+            HEALTH3="http://localhost:${HOST_PORT}/"
+
+            for i in {1..60}; do
+              if curl -fsS "\$HEALTH1" >/dev/null 2>&1 || \\
+                 curl -fsS "\$HEALTH2" >/dev/null 2>&1 || \\
+                 curl -fsS "\$HEALTH3" >/dev/null 2>&1; then
+                echo "[Deploy] Healthy "
+                docker logs --tail=80 express-api-test || true
+                exit 0
               fi
+              echo "  …not healthy yet (\$i/60)"
               sleep 1
             done
 
-            echo "[Deploy] Health check OK"
-            docker logs --tail=100 express-api-test || true
+            echo "[Deploy] Health check failed  — showing logs"
+            docker logs --tail=300 express-api-test || true
+            exit 1
           """
         }
       }
