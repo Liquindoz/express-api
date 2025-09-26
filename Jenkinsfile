@@ -170,13 +170,11 @@ pipeline {
         sh '''#!/bin/bash
           set -euo pipefail
           echo "[Monitoring] Production is being check inside wget container"
-	  URLS=(
-  		"http://localhost:${APP_PORT}/health"
-  		"http://localhost:${APP_PORT}/api/health"
-  		"http://localhost:${APP_PORT}/"
-	)
- 
-          
+	
+	  HEALTH1="http://localhost:${APP_PORT}/health"
+	  HEALTH2="http://localhost:${APP_PORT}/api/health"
+	  HEALTH3="http://localhost:${APP_PORT}/"
+
           if docker exec express-api-prod sh -c "wget -qO- $HEALTH1 >/dev/null 2>&1" || \
              docker exec express-api-prod sh -c "wget -qO- $HEALTH2 >/dev/null 2>&1" || \
              docker exec express-api-prod sh -c "wget -qO- $HEALTH3 >/dev/null 2>&1"; then
