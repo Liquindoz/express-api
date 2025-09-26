@@ -121,6 +121,45 @@ pipeline {
       }
     }
   }
+      stage('Release') {
+      steps {
+        script {
+          def IMAGE = "express-api:${env.BUILD_NUMBER}"
+          sh """#!/bin/bash
+            set -euo pipefail
+
+            echo "[Release] Cleaning up old production container"
+            docker rm -f express-api-prod || true
+
+            echo "[Release] Running production container from ${IMAGE}"
+            docker run -d --name express-api-prod -p 9090:${APP_PORT} \
+              -e NODE_ENV=production \
+              -e PORT=${APP_PORT} \
+              ${IMAGE}
+
+            echo "[Release] docker ps:"
+            docker ps --format 'table {{.Names}}\\t{{.Image}}\\t{{.Ports}}\\t{{.Status}}'
+
+            echo "[Release] Waiting for production health endpoint..."
+            for i in {1..60}; do
+              if docker run --rm --network container:express-api-prod curlimages/curl:8.10.1 \
+                   -fsS http://localhost:${APP_PORT}/health >/dev/null 2>&1; then
+                echo "[Release] Production Healthy "
+                docker logs --tail=80 express-api-prod || true
+                exit 0
+              fi
+              echo "  …not healthy yet (\$i/60)"
+              sleep 1
+            done
+
+            echo "[Release] Production health check failed  — showing logs"
+            docker logs --tail=300 express-api-prod || true
+            exit 1
+          """
+        }
+      }
+    }
+
 
   post {
     always {
