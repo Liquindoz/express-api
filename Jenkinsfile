@@ -1,12 +1,6 @@
 pipeline {
   agent any
-
-  options {
-    timestamps()
-    ansiColor('xterm')
-    buildDiscarder(logRotator(numToKeepStr: '15'))
-    disableConcurrentBuilds()
-  }
+  options { timestamps() }
 
   tools { nodejs 'Node 20' }
 
@@ -16,8 +10,8 @@ pipeline {
   }
 
   environment {
-    SCANNER_HOME = tool 'SonarScanner'
-    APP_PORT     = '3000'
+    SCANNER_HOME = tool 'SonarScanner'      // scanner in sonar tool
+    APP_PORT     = '3000'                   // the port internal port
   }
 
   stages {
@@ -25,7 +19,6 @@ pipeline {
     stage('Checkout the SCM') {
       steps {
         git branch: 'main', url: 'https://github.com/Liquindoz/express-api.git'
-        echo "Commit: ${env.GIT_COMMIT ?: 'unknown'} | Build: #${env.BUILD_NUMBER}"
       }
     }
 
@@ -89,7 +82,6 @@ pipeline {
     }
 
     stage('Deploy Stage') {
-      when { branch 'main' }
       steps {
         script {
           def IMAGE = "mydev-ci:${env.BUILD_NUMBER}"
@@ -98,35 +90,35 @@ pipeline {
 
             docker rm -f mydev-stag || true
 
-            echo "Build Deploy Image ${IMAGE}"
+            echo "[Deploy] Building image ${IMAGE}"
             docker build --pull -t ${IMAGE} .
 
-            echo "Starting staging on port ${params.STAGING_PORT} -> app:${APP_PORT}"
+            echo "[Deploy] Begin Testing on the host:${params.STAGING_PORT} -> app:${APP_PORT}"
             docker run -d --name mydev-stag -p ${params.STAGING_PORT}:${APP_PORT} \\
               -e NODE_ENV=production \\
               -e PORT=${APP_PORT} \\
               ${IMAGE}
 
-            echo "Showing running containers:"
+            echo "[Deploy] inside docker ps :"
             docker ps --format 'table {{.Names}}\\t{{.Image}}\\t{{.Ports}}\\t{{.Status}}'
 
-            echo "Test is in queue for Testing Health"
-            for i in {1..30}; do
+            echo "[Deploy] Test is in quueu for Testing Health"
+            for i in {1..60}; do
               if docker run --rm --network container:mydev-stag curlimages/curl:8.10.1 \\
                    -fsS http://localhost:${APP_PORT}/health >/dev/null 2>&1 || \\
                  docker run --rm --network container:mydev-stag curlimages/curl:8.10.1 \\
                    -fsS http://localhost:${APP_PORT}/api/health >/dev/null 2>&1 || \\
                  docker run --rm --network container:mydev-stag curlimages/curl:8.10.1 \\
                    -fsS http://localhost:${APP_PORT}/ >/dev/null 2>&1; then
-                echo "Health Testing done"
+                echo "[Deploy] Health Testing done "
                 docker logs --tail=80 mydev-stag || true
                 exit 0
               fi
-              echo "  not even healthy!!! (\$i/30)"
+              echo "  not even healthy!!! (\$i/60)"
               sleep 1
             done
 
-            echo "Failed for Health testing"
+            echo "[Deploy] Failed for Health testing "
             docker logs --tail=300 mydev-stag || true
             exit 1
           """
@@ -135,42 +127,41 @@ pipeline {
     }
 
     stage('Release Stage') {
-      when { branch 'main' }
       steps {
         script {
           def IMAGE = "mydev-ci:${env.BUILD_NUMBER}"
           sh """#!/bin/bash
             set -euo pipefail
 
-            echo "Production container is cleaned"
+            echo "[Release] Production container is cleaned"
             docker rm -f mydev-prod || true
 
-            echo "Production container run through ${IMAGE}"
+            echo "[Release] Production container run through ${IMAGE}"
             docker run -d --name mydev-prod -p ${params.PROD_PORT}:${APP_PORT} \\
               -e NODE_ENV=production \\
               -e PORT=${APP_PORT} \\
               ${IMAGE}
 
-            echo "the docker ps:"
+            echo "[Release] the docker ps : "
             docker ps --format 'table {{.Names}}\\t{{.Image}}\\t{{.Ports}}\\t{{.Status}}'
 
-            echo "Production health is in queue"
-            for i in {1..30}; do
+            echo "[Release] Production health is in queue"
+            for i in {1..60}; do
               if docker run --rm --network container:mydev-prod curlimages/curl:8.10.1 \\
                    -fsS http://localhost:${APP_PORT}/health >/dev/null 2>&1 || \\
                  docker run --rm --network container:mydev-prod curlimages/curl:8.10.1 \\
                    -fsS http://localhost:${APP_PORT}/api/health >/dev/null 2>&1 || \\
                  docker run --rm --network container:mydev-prod curlimages/curl:8.10.1 \\
                    -fsS http://localhost:${APP_PORT}/ >/dev/null 2>&1; then
-                echo "PRODUCTION Healthy"
+                echo "[Release] PRODUCTION Healthy "
                 docker logs --tail=80 mydev-prod || true
                 exit 0
               fi
-              echo " not healthy (\$i/30)"
+              echo " not healthy (\$i/60)"
               sleep 1
             done
 
-            echo "failed detected any health Production"
+            echo "[Release] failed detected any health Production"
             docker logs --tail=300 mydev-prod || true
             exit 1
           """
@@ -182,7 +173,7 @@ pipeline {
       steps {
         sh '''#!/bin/bash
           set -euo pipefail
-          echo "Production container is checking inside the container"
+          echo "[Monitoring] Production container is checking inside the container"
 
           HEALTH1="http://localhost:${APP_PORT}/health"
           HEALTH2="http://localhost:${APP_PORT}/api/health"
@@ -191,14 +182,14 @@ pipeline {
           if docker exec mydev-prod sh -c "wget -qO- $HEALTH1 >/dev/null 2>&1" || \
              docker exec mydev-prod sh -c "wget -qO- $HEALTH2 >/dev/null 2>&1" || \
              docker exec mydev-prod sh -c "wget -qO- $HEALTH3 >/dev/null 2>&1"; then
-            echo "Health is Good"
+            echo "[Monitoring] Health is Good"
           else
-            echo "Health is Failed"
+            echo "[Monitoring] Health is Failed "
             docker logs --tail=120 mydev-prod || true
             exit 1
           fi
 
-          echo "the stats of Container"
+          echo "[Monitoring] the stats of Container "
           docker stats --no-stream --format "table {{.Name}}\\t{{.CPUPerc}}\\t{{.MemUsage}}\\t{{.NetIO}}\\t{{.BlockIO}}"
         '''
       }
