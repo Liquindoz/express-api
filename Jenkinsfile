@@ -49,18 +49,22 @@ pipeline {
           export NODE_OPTIONS=--experimental-vm-modules
           npx jest --coverage --coverageReporters=lcov --coverageReporters=text
         '''
-        // Run Sonar but don’t hard-fail the pipeline if the server/quality gate isn’t reachable
-        catchError(buildResult: 'SUCCESS', stageResult: 'UNSTABLE') {
-          withSonarQubeEnv('sonarqube') {
-            sh """#!/bin/bash
-              set -euo pipefail
-              "\${SCANNER_HOME}/bin/sonar-scanner" \
-                -Dsonar.projectKey=mydev-ci \
-                -Dsonar.projectName="Student Node API" \
-                -Dsonar.sources=src \
-                -Dsonar.tests=tests \
-                -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info
-            """
+        withSonarQubeEnv('sonarqube') {
+          sh """#!/bin/bash
+            set -euo pipefail
+            "\${SCANNER_HOME}/bin/sonar-scanner" \
+              -Dsonar.projectKey=mydev-ci \
+              -Dsonar.projectName="Student Node API" \
+              -Dsonar.sources=src \
+              -Dsonar.tests=tests \
+              -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info
+          """
+        }
+        // Enforce the quality gate (no yellow “!”). Requires SonarQube webhook to Jenkins.
+        timeout(time: 10, unit: 'MINUTES') {
+          def qg = waitForQualityGate()          // returns [status: 'OK' | 'WARN' | 'ERROR' | 'CANCELED']
+          if (qg.status != 'OK') {
+            error "Quality gate failed: ${qg.status}"
           }
         }
       }
