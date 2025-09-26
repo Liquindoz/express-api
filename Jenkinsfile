@@ -156,26 +156,32 @@ pipeline {
       }
     }
 
-    stage('Monitoring') {
-      steps {
-        sh '''#!/bin/bash
-          set -euo pipefail
-          echo "[Monitoring] Checking production container health..."
+	     stage('Monitoring') {
+  		steps {
+    		sh '''#!/bin/bash
+      		set -euo pipefail
+      		echo "[Monitoring] Checking production container health..."
 
-          if docker exec express-api-prod curl -fsS http://localhost:${APP_PORT}/health >/dev/null 2>&1; then
-            echo "[Monitoring] Health check OK "
-          else
-            echo "[Monitoring] Health check FAILED "
-            docker logs --tail=100 express-api-prod || true
-            exit 1
-          fi
+      HEALTH1="http://localhost:${APP_PORT}/health"
+      HEALTH2="http://localhost:${APP_PORT}/api/health"
+      HEALTH3="http://localhost:${APP_PORT}/"
 
-          echo "[Monitoring] Displaying container stats (5s sample)..."
-          docker stats --no-stream --format "table {{.Name}}\\t{{.CPUPerc}}\\t{{.MemUsage}}\\t{{.NetIO}}\\t{{.BlockIO}}"
-        '''
-      }
-    }
-  }
+      # use wget inside the app container (curl may not be installed)
+      if docker exec express-api-prod sh -c "wget -qO- $HEALTH1 >/dev/null 2>&1" || \
+         docker exec express-api-prod sh -c "wget -qO- $HEALTH2 >/dev/null 2>&1" || \
+         docker exec express-api-prod sh -c "wget -qO- $HEALTH3 >/dev/null 2>&1"; then
+        echo "[Monitoring] Health check OK "
+      else
+        echo "[Monitoring] Health check FAILED "
+        docker logs --tail=120 express-api-prod || true
+        exit 1
+      fi
+
+      echo "[Monitoring] Displaying container stats (snapshot)..."
+      docker stats --no-stream --format "table {{.Name}}\\t{{.CPUPerc}}\\t{{.MemUsage}}\\t{{.NetIO}}\\t{{.BlockIO}}"
+    '''
+  	}
+   }
 
   post {
     always {
