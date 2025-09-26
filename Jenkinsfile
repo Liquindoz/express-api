@@ -142,7 +142,7 @@ pipeline {
             docker ps --format 'table {{.Names}}\\t{{.Image}}\\t{{.Ports}}\\t{{.Status}}'
 
             echo "[Release] Production health is queue inside netns container "
-            for i in $(seq 1 60); do
+            for i in {1..60}; do
               if docker run --rm --network container:express-api-prod curlimages/curl:8.10.1 \\
                    -fsS http://localhost:${APP_PORT}/health >/dev/null 2>&1 || \\
                  docker run --rm --network container:express-api-prod curlimages/curl:8.10.1 \\
