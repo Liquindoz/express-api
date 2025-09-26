@@ -3,9 +3,10 @@ pipeline {
   options { timestamps() }
 
   tools { nodejs 'Node 20' }                  // Manage Jenkins → Global Tool Configuration
+
   environment {
     SCANNER_HOME = tool 'SonarScanner'        // Manage Jenkins → Global Tool Configuration
-    HOST_PORT = '8082'                         // external host port
+    HOST_PORT = '8082'                         // external test port
     APP_PORT  = '3000'                         // internal app port
   }
 
@@ -82,13 +83,12 @@ pipeline {
           sh """#!/bin/bash
             set -euo pipefail
 
-            # Clean previous container
             docker rm -f express-api-test || true
 
             echo "[Deploy] Building image ${IMAGE}"
             docker build --pull -t ${IMAGE} .
 
-            echo "[Deploy] Running container on host:${HOST_PORT} -> app:${APP_PORT}"
+            echo "[Deploy] Running test container on host:${HOST_PORT} -> app:${APP_PORT}"
             docker run -d --name express-api-test -p ${HOST_PORT}:${APP_PORT} \\
               -e NODE_ENV=production \\
               -e PORT=${APP_PORT} \\
@@ -97,15 +97,11 @@ pipeline {
             echo "[Deploy] docker ps:"
             docker ps --format 'table {{.Names}}\\t{{.Image}}\\t{{.Ports}}\\t{{.Status}}'
 
-            echo "[Deploy] Waiting for health (probing inside container netns)…"
+            echo "[Deploy] Waiting for health..."
             for i in {1..60}; do
               if docker run --rm --network container:express-api-test curlimages/curl:8.10.1 \\
-                   -fsS http://localhost:${APP_PORT}/health >/dev/null 2>&1 || \\
-                 docker run --rm --network container:express-api-test curlimages/curl:8.10.1 \\
-                   -fsS http://localhost:${APP_PORT}/api/health >/dev/null 2>&1 || \\
-                 docker run --rm --network container:express-api-test curlimages/curl:8.10.1 \\
-                   -fsS http://localhost:${APP_PORT}/ >/dev/null 2>&1; then
-                echo "[Deploy] Healthy "
+                   -fsS http://localhost:${APP_PORT}/health >/dev/null 2>&1; then
+                echo "[Deploy] Healthy s"
                 docker logs --tail=80 express-api-test || true
                 exit 0
               fi
@@ -113,15 +109,15 @@ pipeline {
               sleep 1
             done
 
-            echo "[Deploy] Health check failed — showing logs"
+            echo "[Deploy] Health check failed "
             docker logs --tail=300 express-api-test || true
             exit 1
           """
         }
       }
     }
-  }
-      stage('Release') {
+
+    stage('Release') {
       steps {
         script {
           def IMAGE = "express-api:${env.BUILD_NUMBER}"
@@ -132,17 +128,17 @@ pipeline {
             docker rm -f express-api-prod || true
 
             echo "[Release] Running production container from ${IMAGE}"
-            docker run -d --name express-api-prod -p 9090:${APP_PORT} \
-              -e NODE_ENV=production \
-              -e PORT=${APP_PORT} \
+            docker run -d --name express-api-prod -p 9090:${APP_PORT} \\
+              -e NODE_ENV=production \\
+              -e PORT=${APP_PORT} \\
               ${IMAGE}
 
             echo "[Release] docker ps:"
             docker ps --format 'table {{.Names}}\\t{{.Image}}\\t{{.Ports}}\\t{{.Status}}'
 
-            echo "[Release] Waiting for production health endpoint..."
+            echo "[Release] Waiting for production health..."
             for i in {1..60}; do
-              if docker run --rm --network container:express-api-prod curlimages/curl:8.10.1 \
+              if docker run --rm --network container:express-api-prod curlimages/curl:8.10.1 \\
                    -fsS http://localhost:${APP_PORT}/health >/dev/null 2>&1; then
                 echo "[Release] Production Healthy "
                 docker logs --tail=80 express-api-prod || true
@@ -152,7 +148,7 @@ pipeline {
               sleep 1
             done
 
-            echo "[Release] Production health check failed  — showing logs"
+            echo "[Release] Production health check failed "
             docker logs --tail=300 express-api-prod || true
             exit 1
           """
@@ -160,6 +156,26 @@ pipeline {
       }
     }
 
+    stage('Monitoring') {
+      steps {
+        sh '''#!/bin/bash
+          set -euo pipefail
+          echo "[Monitoring] Checking production container health..."
+
+          if docker exec express-api-prod curl -fsS http://localhost:${APP_PORT}/health >/dev/null 2>&1; then
+            echo "[Monitoring] Health check OK "
+          else
+            echo "[Monitoring] Health check FAILED "
+            docker logs --tail=100 express-api-prod || true
+            exit 1
+          fi
+
+          echo "[Monitoring] Displaying container stats (5s sample)..."
+          docker stats --no-stream --format "table {{.Name}}\\t{{.CPUPerc}}\\t{{.MemUsage}}\\t{{.NetIO}}\\t{{.BlockIO}}"
+        '''
+      }
+    }
+  }
 
   post {
     always {
