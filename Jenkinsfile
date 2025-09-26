@@ -10,8 +10,8 @@ pipeline {
   }
 
   environment {
-    SCANNER_HOME = tool 'SonarScanner'      // scanner in sonar tool
-    APP_PORT     = '3000'                   // the port internal port
+    SCANNER_HOME = tool 'SonarScanner'      // SonarScanner tool
+    APP_PORT     = '3000'                   // internal app port
   }
 
   stages {
@@ -49,16 +49,19 @@ pipeline {
           export NODE_OPTIONS=--experimental-vm-modules
           npx jest --coverage --coverageReporters=lcov --coverageReporters=text
         '''
-        withSonarQubeEnv('sonarqube') {
-          sh """#!/bin/bash
-            set -euo pipefail
-            "\${SCANNER_HOME}/bin/sonar-scanner" \
-              -Dsonar.projectKey=mydev-ci \
-              -Dsonar.projectName="Student Node API" \
-              -Dsonar.sources=src \
-              -Dsonar.tests=tests \
-              -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info
-          """
+        // Run Sonar but don’t hard-fail the pipeline if the server/quality gate isn’t reachable
+        catchError(buildResult: 'SUCCESS', stageResult: 'UNSTABLE') {
+          withSonarQubeEnv('sonarqube') {
+            sh """#!/bin/bash
+              set -euo pipefail
+              "\${SCANNER_HOME}/bin/sonar-scanner" \
+                -Dsonar.projectKey=mydev-ci \
+                -Dsonar.projectName="Student Node API" \
+                -Dsonar.sources=src \
+                -Dsonar.tests=tests \
+                -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info
+            """
+          }
         }
       }
     }
@@ -103,7 +106,7 @@ pipeline {
             docker ps --format 'table {{.Names}}\\t{{.Image}}\\t{{.Ports}}\\t{{.Status}}'
 
             echo "[Deploy] Test is in quueu for Testing Health"
-            for i in {1..60}; do
+            for i in {1..30}; do
               if docker run --rm --network container:mydev-stag curlimages/curl:8.10.1 \\
                    -fsS http://localhost:${APP_PORT}/health >/dev/null 2>&1 || \\
                  docker run --rm --network container:mydev-stag curlimages/curl:8.10.1 \\
@@ -114,7 +117,7 @@ pipeline {
                 docker logs --tail=80 mydev-stag || true
                 exit 0
               fi
-              echo "  not even healthy!!! (\$i/60)"
+              echo "  not even healthy!!! (\$i/30)"
               sleep 1
             done
 
@@ -146,7 +149,7 @@ pipeline {
             docker ps --format 'table {{.Names}}\\t{{.Image}}\\t{{.Ports}}\\t{{.Status}}'
 
             echo "[Release] Production health is in queue"
-            for i in {1..60}; do
+            for i in {1..30}; do
               if docker run --rm --network container:mydev-prod curlimages/curl:8.10.1 \\
                    -fsS http://localhost:${APP_PORT}/health >/dev/null 2>&1 || \\
                  docker run --rm --network container:mydev-prod curlimages/curl:8.10.1 \\
@@ -157,7 +160,7 @@ pipeline {
                 docker logs --tail=80 mydev-prod || true
                 exit 0
               fi
-              echo " not healthy (\$i/60)"
+              echo " not healthy (\$i/30)"
               sleep 1
             done
 
