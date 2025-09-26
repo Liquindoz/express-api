@@ -67,7 +67,7 @@ pipeline {
 
           if grep -q '"severity":"\\(high\\|critical\\)"' audit.json; then
             echo "Vulnerabilities are found" 
-            head -n 200 audit.json
+            head -n 150 audit.json || true
             exit 1
           else
             echo "No Vulnerabilities detect" 
@@ -142,7 +142,7 @@ pipeline {
             docker ps --format 'table {{.Names}}\\t{{.Image}}\\t{{.Ports}}\\t{{.Status}}'
 
             echo "[Release] Production health is queue inside netns container "
-            for i in {1..60}; do
+            for i in $(seq 1 60); do
               if docker run --rm --network container:express-api-prod curlimages/curl:8.10.1 \\
                    -fsS http://localhost:${APP_PORT}/health >/dev/null 2>&1 || \\
                  docker run --rm --network container:express-api-prod curlimages/curl:8.10.1 \\
@@ -150,7 +150,7 @@ pipeline {
                  docker run --rm --network container:express-api-prod curlimages/curl:8.10.1 \\
                    -fsS http://localhost:${APP_PORT}/ >/dev/null 2>&1; then
                 echo "[Release] Confirmed Healthy Of Production " 
-                docker logs --tail=80 express-api-prod || true
+                docker logs --tail=100 express-api-prod || true
                 exit 0
               fi
               echo "  Not even Healthy(\$i/60)" 
@@ -158,7 +158,7 @@ pipeline {
             done
 
             echo "[Release] health production is Failed"
-            docker logs --tail=300 express-api-prod || true
+            docker logs --tail=250 express-api-prod
             exit 1
           """
         }
@@ -170,11 +170,13 @@ pipeline {
         sh '''#!/bin/bash
           set -euo pipefail
           echo "[Monitoring] Production is being check inside wget container"
+	  URLS=(
+  		"http://localhost:${APP_PORT}/health"
+  		"http://localhost:${APP_PORT}/api/health"
+  		"http://localhost:${APP_PORT}/"
+	)
  
-          HEALTH1="http://localhost:${APP_PORT}/health"
-          HEALTH2="http://localhost:${APP_PORT}/api/health"
-          HEALTH3="http://localhost:${APP_PORT}/"
-
+          
           if docker exec express-api-prod sh -c "wget -qO- $HEALTH1 >/dev/null 2>&1" || \
              docker exec express-api-prod sh -c "wget -qO- $HEALTH2 >/dev/null 2>&1" || \
              docker exec express-api-prod sh -c "wget -qO- $HEALTH3 >/dev/null 2>&1"; then
