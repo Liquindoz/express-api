@@ -65,7 +65,7 @@ set -euo pipefail
   -Dsonar.projectKey=mydev-ci \\
   -Dsonar.projectName=\"Student Node API\" \\
   -Dsonar.sources=app \\
-  -Dsonar.tests=__tests__ \\
+  -Dsonar.tests=tests \\
   -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info
 """
         }
