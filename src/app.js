@@ -3,22 +3,20 @@ import express from "express";
 const app = express();
 app.use(express.json());
 
-// ---- In-memory data store ----
+// ✅ Add this so Supertest can see it
+app.get("/health", (_req, res) => res.status(200).json({ status: "ok" }));
+
+// --- CRUD demo ---
 let users = [];
 
-// CREATE
 app.post("/users", (req, res) => {
   const user = { id: users.length + 1, ...req.body };
   users.push(user);
   res.status(201).json(user);
 });
 
-// READ (all)
-app.get("/users", (_req, res) => {
-  res.json(users);
-});
+app.get("/users", (_req, res) => res.json(users));
 
-// UPDATE
 app.put("/users/:id", (req, res) => {
   const id = Number(req.params.id);
   const idx = users.findIndex(u => u.id === id);
@@ -27,7 +25,6 @@ app.put("/users/:id", (req, res) => {
   res.json(users[idx]);
 });
 
-// DELETE
 app.delete("/users/:id", (req, res) => {
   const id = Number(req.params.id);
   users = users.filter(u => u.id !== id);
