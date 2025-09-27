@@ -6,11 +6,11 @@ pipeline {
 
     tools { 
         nodejs 'Node 20' 
-    }
+    }  
 
     environment {
-        SCANNER_HOME = tool 'SonarScanner'
-        HOST_PORT    = '8082' // external port
+        SCANNER_HOME = tool 'SonarScanner'         
+        HOST_PORT    = '3031' // external port
         APP_PORT     = '3000' // internal port
     }
 
@@ -138,7 +138,7 @@ pipeline {
                     echo "[Release] in the docker ps:"
                     docker ps --format 'table {{.Names}}\\t{{.Image}}\\t{{.Ports}}\\t{{.Status}}'
                     echo "[Release] Production health is queue inside netns container "
-                    for i in \$(seq 1 60); do
+                    for i in {1..60}; do
                         if docker run --rm --network container:express-api-prod curlimages/curl:8.10.1 \\
                             -fsS http://localhost:${APP_PORT}/health >/dev/null 2>&1 || \\
                            docker run --rm --network container:express-api-prod curlimages/curl:8.10.1 \\
