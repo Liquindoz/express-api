@@ -49,8 +49,8 @@ pipeline {
           sh """#!/bin/bash
             set -euo pipefail
             "\${SCANNER_HOME}/bin/sonar-scanner" \
-              -Dsonar.projectKey=express-api \
-              -Dsonar.projectName=express-api \
+              -Dsonar.projectKey=express-api-demo \
+              -Dsonar.projectName=express-api-demo \
               -Dsonar.sources=src \
               -Dsonar.tests=tests \
               -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info
