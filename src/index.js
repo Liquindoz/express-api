@@ -1,9 +1,9 @@
-import express from "express";
-import app from "./app.js;
+import app from "./app.js";
 
-app.get('/health', (_req, res) => res.status(200).send('ok'));
+// Health check
+app.get("/health", (_req, res) => res.status(200).json({ status: "ok" }));
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-	console.log(`API running on http://localhost:${PORT}`);
+  console.log(`API running on http://localhost:${PORT}`);
 });
