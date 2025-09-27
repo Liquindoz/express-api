@@ -131,7 +131,7 @@ pipeline {
                     echo "[Release] Old Production is cleaned "
                     docker rm -f express-api-prod || true
                     echo "[Release] Production container is running through ${IMAGE}"
-                    docker run -d --name express-api-prod -p 9090:${APP_PORT} \\
+                    docker run -d --name express-api-prod -p ${HOST_PORT}:${APP_PORT} \\
                         -e NODE_ENV=production \\
                         -e PORT=${APP_PORT} \\
                         ${IMAGE}
