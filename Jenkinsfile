@@ -6,7 +6,7 @@ pipeline {
 
   environment {
     SCANNER_HOME = tool 'SonarScanner'
-    HOST_PORT = '3031'   // host/external port
+    HOST_PORT = '9090'   // host/external port
     APP_PORT  = '3000'   // container/internal port
   }
 
